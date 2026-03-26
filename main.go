@@ -1,7 +1,16 @@
 package main
 
-import "fmt"
+import (
+	"log"
+
+	"github.com/jman-berg/gotindeq/internal/tindeq"
+)
 
 func main() {
-	fmt.Print("GURBEE")
+	client := tindeq.NewTindeqClient()
+	err := client.Connect()
+	if err != nil {
+		log.Fatalln("Failed to connect to Tindeq: %v", err)
+	}
+	client.connected_device.
 }

@@ -2,10 +2,13 @@ package tindeq
 
 import (
 	"fmt"
-	"log"
+	"strings"
+	"time"
 
 	"tinygo.org/x/bluetooth"
 )
+
+const TARGET_DEVICE = "Progressor"
 
 var adapter = bluetooth.DefaultAdapter
 
@@ -58,11 +61,12 @@ func newCommands() commands {
 }
 
 type TindeqProgressor struct {
-	response_codes response_codes
-	cmds           commands
-	service_uuid   string
-	write_uuid     string
-	notify_uuid    string
+	connected_device bluetooth.Device
+	response_codes   response_codes
+	cmds             commands
+	service_uuid     string
+	write_uuid       string
+	notify_uuid      string
 }
 
 func NewTindeqClient() TindeqProgressor {
@@ -83,12 +87,30 @@ func (tq *TindeqProgressor) Connect() error {
 		return err
 	}
 
+	var scan_result bluetooth.ScanResult
+
 	fmt.Println("Scanning for devices...")
-	if err = adapter.Scan(func(*bluetooth.Adapter, bluetooth.ScanResult) {
-		
+	if err := adapter.Scan(func(adapter *bluetooth.Adapter, device bluetooth.ScanResult) {
+		if strings.Contains(device.LocalName(), TARGET_DEVICE) {
+			scan_result = device
+			adapter.StopScan()
+			fmt.Println("found Progressor:", device.Address.String(), device.RSSI, device.LocalName())
+		}
+	}); err != nil {
+		return err
 	}
-	
 
+	fmt.Println("Now connecting...")
+	dev, err := adapter.Connect(scan_result.Address, bluetooth.ConnectionParams{
+		ConnectionTimeout: bluetooth.NewDuration(time.Second * 5),
+		MinInterval:       bluetooth.NewDuration(time.Millisecond * 500),
+		MaxInterval:       bluetooth.NewDuration(time.Second * 1),
+		Timeout:           bluetooth.NewDuration(time.Minute * 10),
+	})
+	if err != nil {
+		return err
+	}
+	tq.connected_device = dev
+	fmt.Println("Succesfully connected to Progressor")
 	return nil
-
 }
