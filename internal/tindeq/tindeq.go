@@ -2,6 +2,7 @@ package tindeq
 
 import (
 	"fmt"
+	"log"
 	"strings"
 	"time"
 
@@ -61,21 +62,22 @@ func newCommands() commands {
 }
 
 type TindeqProgressor struct {
-	connected_device bluetooth.Device
-	response_codes   response_codes
-	cmds             commands
-	service_uuid     string
-	write_uuid       string
-	notify_uuid      string
+	Connected_device         bluetooth.Device
+	response_codes           response_codes
+	cmds                     commands
+	progressor_service_uuids []bluetooth.UUID
+	service_uuid             bluetooth.UUID
+	write_uuid               bluetooth.UUID
+	notify_uuid              bluetooth.UUID
 }
 
 func NewTindeqClient() TindeqProgressor {
 	return TindeqProgressor{
 		response_codes: newResponseCodes(),
 		cmds:           newCommands(),
-		service_uuid:   "7e4e1701-1ea6-40c9-9dcc-13d34ffead57",
-		write_uuid:     "7e4e1703-1ea6-40c9-9dcc-13d34ffead57",
-		notify_uuid:    "7e4e1702-1ea6-40c9-9dcc-13d34ffead57",
+		service_uuid:   parseServiceUUID("7e4e1701-1ea6-40c9-9dcc-13d34ffead57"),
+		write_uuid:     parseServiceUUID("7e4e1703-1ea6-40c9-9dcc-13d34ffead57"),
+		notify_uuid:    parseServiceUUID("7e4e1702-1ea6-40c9-9dcc-13d34ffead57"),
 	}
 
 }
@@ -110,7 +112,28 @@ func (tq *TindeqProgressor) Connect() error {
 	if err != nil {
 		return err
 	}
-	tq.connected_device = dev
+	tq.Connected_device = dev
 	fmt.Println("Succesfully connected to Progressor")
 	return nil
+}
+
+func (tq *TindeqProgressor) DiscoverServices() error {
+	service_uuids := []bluetooth.UUID{tq.notify_uuid, tq.service_uuid}
+	services, err := tq.Connected_device.DiscoverServices(service_uuids)
+	if err != nil {
+		return err
+	}
+	for _, service := range services {
+		fmt.Printf("%+v \n", service)
+	}
+
+	return nil
+}
+
+func parseServiceUUID(uuid string) bluetooth.UUID {
+	parsed_uuid, err := bluetooth.ParseUUID(uuid)
+	if err != nil {
+		log.Fatalln("Failed to parse service uuid")
+	}
+	return parsed_uuid
 }

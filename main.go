@@ -10,7 +10,9 @@ func main() {
 	client := tindeq.NewTindeqClient()
 	err := client.Connect()
 	if err != nil {
-		log.Fatalln("Failed to connect to Tindeq: %v", err)
+		log.Fatalln("Failed to connect to Tindeq: ", err)
 	}
-	client.connected_device.
+	if err := client.DiscoverServices(); err != nil {
+		log.Fatalln("Failed to discover Progressor Services:", err)
+	}
 }
