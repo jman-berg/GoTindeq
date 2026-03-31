@@ -1,8 +1,10 @@
 package tindeq
 
 import (
+	"encoding/binary"
 	"fmt"
 	"log"
+	"math"
 	"strings"
 	"time"
 
@@ -13,35 +15,47 @@ const TARGET_DEVICE = "Progressor"
 
 var adapter = bluetooth.DefaultAdapter
 
-type response_codes struct {
-	cmd_resp       int
-	weight_measure int
-	low_pwr        int
+type responseCodes struct {
+	cmdResponse   byte
+	weightMeasure byte
+	lowPower      byte
 }
 
-func newResponseCodes() response_codes {
-	return response_codes{
-		cmd_resp:       0,
-		weight_measure: 1,
-		low_pwr:        4,
+func newResponseCodes() responseCodes {
+	return responseCodes{
+		cmdResponse:   0x00,
+		weightMeasure: 0x01,
+		lowPower:      0x04,
 	}
 }
 
-type Cmd byte
+type serviceUUIDS struct {
+	serviceUUID bluetooth.UUID
+	writeUUID   bluetooth.UUID
+	notifyUUID  bluetooth.UUID
+}
+
+func setServiceUUIDS() serviceUUIDS {
+	return serviceUUIDS{
+		serviceUUID: parseServiceUUID("7e4e1701-1ea6-40c9-9dcc-13d34ffead57"),
+		writeUUID:   parseServiceUUID("7e4e1703-1ea6-40c9-9dcc-13d34ffead57"),
+		notifyUUID:  parseServiceUUID("7e4e1702-1ea6-40c9-9dcc-13d34ffead57"),
+	}
+}
 
 type commands struct {
-	TARE_SCALE                 Cmd
-	START_WEIGHT_MEAS          Cmd
-	STOP_WEIGHT_MEAS           Cmd
-	START_PEAK_RFD_MEAS        Cmd
-	START_PEAK_RFD_MEAS_SERIES Cmd
-	ADD_CALIB_POINT            Cmd
-	SAVE_CALIB                 Cmd
-	GET_APP_VERSION            Cmd
-	GET_ERR_INFO               Cmd
-	CLR_ERR_INFO               Cmd
-	SLEEP                      Cmd
-	GET_BATT_VLTG              Cmd
+	TARE_SCALE                 byte
+	START_WEIGHT_MEAS          byte
+	STOP_WEIGHT_MEAS           byte
+	START_PEAK_RFD_MEAS        byte
+	START_PEAK_RFD_MEAS_SERIES byte
+	ADD_CALIB_POINT            byte
+	SAVE_CALIB                 byte
+	GET_APP_VERSION            byte
+	GET_ERR_INFO               byte
+	CLR_ERR_INFO               byte
+	SLEEP                      byte
+	GET_BATT_VLTG              byte
 }
 
 func newCommands() commands {
@@ -61,40 +75,57 @@ func newCommands() commands {
 	}
 }
 
-type TindeqProgressor struct {
-	Connected_device         bluetooth.Device
-	response_codes           response_codes
-	cmds                     commands
-	progressor_service_uuids []bluetooth.UUID
-	service_uuid             bluetooth.UUID
-	write_uuid               bluetooth.UUID
-	notify_uuid              bluetooth.UUID
+type TindeqClient struct {
+	ConnectedDevice      bluetooth.Device
+	responseCodes        responseCodes
+	Commands             commands
+	serviceUUIDS         serviceUUIDS
+	NotifyCharacteristic bluetooth.DeviceCharacteristic
+	WriteCharacteristic  bluetooth.DeviceCharacteristic
 }
 
-func NewTindeqClient() TindeqProgressor {
-	return TindeqProgressor{
-		response_codes: newResponseCodes(),
-		cmds:           newCommands(),
-		service_uuid:   parseServiceUUID("7e4e1701-1ea6-40c9-9dcc-13d34ffead57"),
-		write_uuid:     parseServiceUUID("7e4e1703-1ea6-40c9-9dcc-13d34ffead57"),
-		notify_uuid:    parseServiceUUID("7e4e1702-1ea6-40c9-9dcc-13d34ffead57"),
+func NewTindeqClient() (*TindeqClient, error) {
+	tq := &TindeqClient{
+		responseCodes: newResponseCodes(),
+		Commands:      newCommands(),
+		serviceUUIDS:  setServiceUUIDS(),
 	}
 
+	if err := tq.Connect(); err != nil {
+		return nil, err
+	}
+
+	if err := tq.DiscoverServices(); err != nil {
+		return nil, err
+	}
+
+	return tq, nil
+
 }
 
-func (tq *TindeqProgressor) Connect() error {
+func (tq *TindeqClient) Initialize() error {
+	if err := tq.Connect(); err != nil {
+		return err
+	}
+	if err := tq.DiscoverServices(); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (tq *TindeqClient) Connect() error {
 	fmt.Println("Searching for progressor...")
 
 	if err := adapter.Enable(); err != nil {
 		return err
 	}
 
-	var scan_result bluetooth.ScanResult
+	var scanResult bluetooth.ScanResult
 
 	fmt.Println("Scanning for devices...")
 	if err := adapter.Scan(func(adapter *bluetooth.Adapter, device bluetooth.ScanResult) {
 		if strings.Contains(device.LocalName(), TARGET_DEVICE) {
-			scan_result = device
+			scanResult = device
 			adapter.StopScan()
 			fmt.Println("found Progressor:", device.Address.String(), device.RSSI, device.LocalName())
 		}
@@ -103,7 +134,7 @@ func (tq *TindeqProgressor) Connect() error {
 	}
 
 	fmt.Println("Now connecting...")
-	dev, err := adapter.Connect(scan_result.Address, bluetooth.ConnectionParams{
+	dev, err := adapter.Connect(scanResult.Address, bluetooth.ConnectionParams{
 		ConnectionTimeout: bluetooth.NewDuration(time.Second * 5),
 		MinInterval:       bluetooth.NewDuration(time.Millisecond * 500),
 		MaxInterval:       bluetooth.NewDuration(time.Second * 1),
@@ -112,22 +143,54 @@ func (tq *TindeqProgressor) Connect() error {
 	if err != nil {
 		return err
 	}
-	tq.Connected_device = dev
-	fmt.Println("Succesfully connected to Progressor")
+	tq.ConnectedDevice = dev
+	fmt.Println("Succesfully connected to Progressor, now discovering services...")
 	return nil
 }
 
-func (tq *TindeqProgressor) DiscoverServices() error {
-	service_uuids := []bluetooth.UUID{tq.notify_uuid, tq.service_uuid}
-	services, err := tq.Connected_device.DiscoverServices(service_uuids)
+func (tq *TindeqClient) DiscoverServices() error {
+	deviceServices, err := tq.ConnectedDevice.DiscoverServices([]bluetooth.UUID{tq.serviceUUIDS.serviceUUID})
 	if err != nil {
 		return err
 	}
-	for _, service := range services {
-		fmt.Printf("%+v \n", service)
+	fmt.Println("Found service: ", deviceServices[0].UUID())
+	deviceCharacteristics, err := deviceServices[0].DiscoverCharacteristics([]bluetooth.UUID{
+		tq.serviceUUIDS.notifyUUID,
+		tq.serviceUUIDS.writeUUID,
+	})
+	if err != nil {
+		return err
+	}
+
+	tq.NotifyCharacteristic = deviceCharacteristics[0]
+	tq.WriteCharacteristic = deviceCharacteristics[1]
+
+	return nil
+}
+
+func (tq *TindeqClient) SendCommand(cmd byte) error {
+	//TODO Change the command type, maybe use consts?
+	_, err := tq.WriteCharacteristic.WriteWithoutResponse([]byte{cmd})
+	if err != nil {
+		return err
 	}
 
 	return nil
+}
+
+func (tq *TindeqClient) EnableNotifcations() error {
+	if err := tq.NotifyCharacteristic.EnableNotifications(func(buf []byte) {
+		parseTLV(buf)
+	}); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (tq *TindeqClient) Close() {
+	tq.NotifyCharacteristic.EnableNotifications(nil)
+	tq.ConnectedDevice.Disconnect()
 }
 
 func parseServiceUUID(uuid string) bluetooth.UUID {
@@ -136,4 +199,48 @@ func parseServiceUUID(uuid string) bluetooth.UUID {
 		log.Fatalln("Failed to parse service uuid")
 	}
 	return parsed_uuid
+}
+
+func parseTLV(buf []byte) error {
+	fmt.Println("Total buf length: ", len(buf))
+	if len(buf) < 2 {
+		return fmt.Errorf("Malformed TLV, not enough bytes for tag & length")
+	}
+
+	tag := buf[0]
+	length := int(buf[1])
+
+	if 2+length > len(buf) {
+		return fmt.Errorf("  Warning: malformed TLV - tag=0x%02X, declared length=%d but insufficient data\n", tag, length)
+	}
+
+	value := buf[2 : 2+length]
+
+	// fmt.Printf("  TLV → Tag: 0x%02X, Length: %d, Value: % x\n", tag, length, value)
+
+	i := 0
+	step := 4
+	//The weight measurement (float32) and timestamp (uint_t32) to go along with it are each 4 bytes or rather 32 bits.
+	iter := 1
+
+	switch tag {
+	case 0x01:
+
+		for i < length {
+
+			weightBits := binary.LittleEndian.Uint32(value[i : i+step])
+			weightMeasurement := math.Round(float64(math.Float32frombits(weightBits))*10) / 10
+			i += step
+			fmt.Printf("Weight measurement: %v kg\n", weightMeasurement)
+			sec := time.Duration(binary.LittleEndian.Uint32(value[i:i+step])) * time.Microsecond
+
+			fmt.Printf("Time: %v\n", sec.Seconds())
+
+			i += step
+			iter += 1
+
+		}
+
+	}
+	return nil
 }
