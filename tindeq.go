@@ -1,4 +1,4 @@
-package tindeq
+package gotindeq
 
 import (
 	"encoding/binary"

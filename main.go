@@ -1,4 +1,4 @@
-package main
+package gotindeq
 
 import (
 	"context"
@@ -7,15 +7,13 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
-
-	"github.com/jman-berg/gotindeq/internal/tindeq"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	client, err := tindeq.NewTindeqClient()
+	client, err := NewTindeqClient()
 	if err != nil {
 		log.Fatalln("Failed to set up Tindeq client: ", err)
 	}
