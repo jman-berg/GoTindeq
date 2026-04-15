@@ -15,6 +15,11 @@ const TARGET_DEVICE = "Progressor"
 
 var adapter = bluetooth.DefaultAdapter
 
+type WeightMeasurement struct {
+	weight    float64
+	timestamp time.Duration
+}
+
 type responseCodes struct {
 	cmdResponse   byte
 	weightMeasure byte
@@ -91,11 +96,11 @@ func NewTindeqClient() (*TindeqClient, error) {
 		serviceUUIDS:  setServiceUUIDS(),
 	}
 
-	if err := tq.Connect(); err != nil {
+	if err := tq.connect(); err != nil {
 		return nil, err
 	}
 
-	if err := tq.DiscoverServices(); err != nil {
+	if err := tq.discoverServices(); err != nil {
 		return nil, err
 	}
 
@@ -103,17 +108,7 @@ func NewTindeqClient() (*TindeqClient, error) {
 
 }
 
-func (tq *TindeqClient) Initialize() error {
-	if err := tq.Connect(); err != nil {
-		return err
-	}
-	if err := tq.DiscoverServices(); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (tq *TindeqClient) Connect() error {
+func (tq *TindeqClient) connect() error {
 	fmt.Println("Searching for progressor...")
 
 	if err := adapter.Enable(); err != nil {
@@ -148,7 +143,7 @@ func (tq *TindeqClient) Connect() error {
 	return nil
 }
 
-func (tq *TindeqClient) DiscoverServices() error {
+func (tq *TindeqClient) discoverServices() error {
 	deviceServices, err := tq.ConnectedDevice.DiscoverServices([]bluetooth.UUID{tq.serviceUUIDS.serviceUUID})
 	if err != nil {
 		return err
@@ -178,9 +173,9 @@ func (tq *TindeqClient) SendCommand(cmd byte) error {
 	return nil
 }
 
-func (tq *TindeqClient) EnableNotifcations() error {
+func (tq *TindeqClient) EnableNotifcations(ch chan<- WeightMeasurement) error {
 	if err := tq.NotifyCharacteristic.EnableNotifications(func(buf []byte) {
-		parseTLV(buf)
+		parseTLV(buf, ch)
 	}); err != nil {
 		return err
 	}
@@ -201,7 +196,7 @@ func parseServiceUUID(uuid string) bluetooth.UUID {
 	return parsed_uuid
 }
 
-func parseTLV(buf []byte) error {
+func parseTLV(buf []byte, ch chan<- WeightMeasurement) error {
 	fmt.Println("Total buf length: ", len(buf))
 	if len(buf) < 2 {
 		return fmt.Errorf("Malformed TLV, not enough bytes for tag & length")
@@ -235,6 +230,11 @@ func parseTLV(buf []byte) error {
 			sec := time.Duration(binary.LittleEndian.Uint32(value[i:i+step])) * time.Microsecond
 
 			fmt.Printf("Time: %v\n", sec.Seconds())
+
+			ch <- WeightMeasurement{
+				weight:    weightMeasurement,
+				timestamp: sec,
+			}
 
 			i += step
 			iter += 1
