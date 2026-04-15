@@ -16,8 +16,8 @@ const TARGET_DEVICE = "Progressor"
 var adapter = bluetooth.DefaultAdapter
 
 type WeightMeasurement struct {
-	weight    float64
-	timestamp time.Duration
+	Weight    float64
+	Timestamp time.Duration
 }
 
 type responseCodes struct {
