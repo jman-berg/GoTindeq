@@ -23,9 +23,9 @@ func main() {
 		log.Fatalf("Failed to tare scale: %v\n", err)
 	}
 
-	if err := client.EnableNotifcations(); err != nil {
-		log.Fatalln("Error enabling notifications...", err)
-	}
+	// if err := client.EnableNotifcations(); err != nil {
+	// 	log.Fatalln("Error enabling notifications...", err)
+	// }
 
 	if err := client.SendCommand(client.Commands.START_WEIGHT_MEAS); err != nil {
 		log.Fatalln("Error sending command: ", err)
