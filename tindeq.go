@@ -232,8 +232,8 @@ func parseTLV(buf []byte, ch chan<- WeightMeasurement) error {
 			fmt.Printf("Time: %v\n", sec.Seconds())
 
 			ch <- WeightMeasurement{
-				weight:    weightMeasurement,
-				timestamp: sec,
+				Weight:    weightMeasurement,
+				Timestamp: sec,
 			}
 
 			i += step
