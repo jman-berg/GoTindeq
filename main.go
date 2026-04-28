@@ -19,18 +19,18 @@ func main() {
 	}
 	defer client.Close()
 
-	if err := client.SendCommand(client.Commands.TARE_SCALE); err != nil {
-		log.Fatalf("Failed to tare scale: %v\n", err)
-	}
-
-	// if err := client.EnableNotifcations(); err != nil {
-	// 	log.Fatalln("Error enabling notifications...", err)
+	// if err := client.SendCommand(client.Commands.TARE_SCALE); err != nil {
+	// 	log.Fatalf("Failed to tare scale: %v\n", err)
 	// }
-
-	if err := client.SendCommand(client.Commands.START_WEIGHT_MEAS); err != nil {
-		log.Fatalln("Error sending command: ", err)
-	}
-
+	//
+	// // if err := client.EnableNotifcations(); err != nil {
+	// // 	log.Fatalln("Error enabling notifications...", err)
+	// // }
+	//
+	// if err := client.SendCommand(client.Commands.START_WEIGHT_MEAS); err != nil {
+	// 	log.Fatalln("Error sending command: ", err)
+	// }
+	//
 	<-ctx.Done()
 	log.Println("Shutdown signal received. Cleaning up...")
 
