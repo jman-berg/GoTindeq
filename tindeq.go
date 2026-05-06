@@ -163,6 +163,18 @@ func (tq *TindeqClient) discoverServices() error {
 	return nil
 }
 
+// SendRequest sends the command to the device and then returns when all data has been written.
+func (tq *TindeqClient) SendRequest(cmd byte) error {
+	//TODO Change the command type, maybe use consts?
+	_, err := tq.WriteCharacteristic.Write([]byte{cmd})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// SendCommand sends the command to the device. The call will return before all data has been written.
 func (tq *TindeqClient) SendCommand(cmd byte) error {
 	//TODO Change the command type, maybe use consts?
 	_, err := tq.WriteCharacteristic.WriteWithoutResponse([]byte{cmd})
